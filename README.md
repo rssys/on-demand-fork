@@ -1,6 +1,15 @@
 ON-DEMAND-FORK
 ------------
-ON-DEMAND-FORK (ODF) is a fast implementation of the fork system call specifically designed for applications with large memory footprints and a requirement for low fork latency.
+ON-DEMAND-FORK (ODF) is a fast implementation of the fork system call specifically designed for applications with large memory footprints and a requirement for low fork latency. 
+
+ODF improves the latency of fork by deferring the work of copying page tables to the page fault handler, and increases efficiency of fork by selectively copying page tables on-demand. 
+
+ON-DEMAND-FORK appeared on EuroSys 2021. You can find the paper at this [link](https://doi.org/10.1145/3447786.3456258). Cite the work as
+```
+Kaiyang Zhao, Sishuai Gong, and Pedro Fonseca. 2021. On-demand-fork: a microsecond fork for memory-intensive and latency-sensitive applications.
+In Proceedings of the Sixteenth European Conference on Computer Systems (EuroSys '21). Association for Computing Machinery, New York, NY, USA, 540–555.
+DOI:https://doi.org/10.1145/3447786.3456258
+```
 
 ### Build
 We provide the complete source code of the ODF implementation, which is based on Linux kernel v5.6.19. We recommend using the included configuration file `.config` that we tested our implementation with, but you can change it to suit your needs. 
