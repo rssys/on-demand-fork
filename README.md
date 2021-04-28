@@ -1,14 +1,26 @@
-ON-DEMAND-FORK
+On-demand-fork
 ------------
-ON-DEMAND-FORK (ODF) is a fast implementation of the fork system call specifically designed for applications with large memory footprints and a requirement for low fork latency. 
+On-demand-fork (ODF) is a fast implementation of the fork system call specifically designed for applications with large memory footprints and a requirement for low fork latency. 
 
 ODF improves the latency of fork by deferring the work of copying page tables to the page fault handler, and increases efficiency of fork by selectively copying page tables on-demand. 
 
-ON-DEMAND-FORK appeared on EuroSys 2021. You can find the paper at this [link](https://doi.org/10.1145/3447786.3456258). Cite the work as
+On-demand-fork appeared on EuroSys 2021. You can find the paper at this [link](https://doi.org/10.1145/3447786.3456258). The BibTex citation of the work is
 ```
-Kaiyang Zhao, Sishuai Gong, and Pedro Fonseca. 2021. On-demand-fork: a microsecond fork for memory-intensive and latency-sensitive applications.
-In Proceedings of the Sixteenth European Conference on Computer Systems (EuroSys '21). Association for Computing Machinery, New York, NY, USA, 540–555.
-DOI:https://doi.org/10.1145/3447786.3456258
+@inproceedings{10.1145/3447786.3456258,
+author = {Zhao, Kaiyang and Gong, Sishuai and Fonseca, Pedro},
+title = {On-Demand-Fork: A Microsecond Fork for Memory-Intensive and Latency-Sensitive Applications},
+year = {2021},
+isbn = {9781450383349},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3447786.3456258},
+doi = {10.1145/3447786.3456258},
+booktitle = {Proceedings of the Sixteenth European Conference on Computer Systems},
+pages = {540–555},
+numpages = {16},
+location = {Online Event, United Kingdom},
+series = {EuroSys '21}
+}
 ```
 
 ### Build
@@ -28,9 +40,9 @@ Use ODF in one of the following ways:
 
 - In your application, replace `fork()` with `syscall(439)` to invoke ODF.
 
-- Automatically redirect all `fork()` calls to ODF in your application by setting `/proc/<pid>/use_odf` to `1`. When a new process is created, the process inherits the flag from its parent. Read from `/proc/<pid>/use_odf` to determine the current fork-to-ODF redirection setting: `1` means the redirection is on, while `0` means the rediction is off.
+- Transparently switch to ODF implementation of fork in your application by setting `/proc/<pid>/use_odf` to `1`. When a new process is created, the process inherits the flag from its parent. Read from `/proc/<pid>/use_odf` to determine the current implementation of fork in use: `1` means ODF provides `fork()`, while `0` means the traditional fork  provides `fork()`.
 
-    To redirect fork to ODF right from the start of a program, take advantage of the inheritance of the flag by having a shell script like this:
+    To use ODF transparently right from the start of a program, take advantage of the inheritance of the flag by having a shell script like this:
     ```
     #!/bin/bash
     echo 1 > /proc/self/use_odf
