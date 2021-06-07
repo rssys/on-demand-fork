@@ -1596,6 +1596,9 @@ static int copy_mm_tfork(unsigned long clone_flags, struct task_struct *tsk)
 	if (!oldmm)
 		return 0;
 
+	//forward subsequent fork() calls to on-demand-fork
+	set_bit(MMF_USE_ODF, &oldmm->flags);
+
 	/* initialize the new vmacache entries */
 	vmacache_flush(tsk);
 

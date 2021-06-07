@@ -246,7 +246,14 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 		next = pmd_addr_end(addr, end);
 		if (pmd_none_or_clear_bad(pmd))
 			continue;
-		free_pte_range(tlb, pmd, addr);
+#ifdef CONFIG_DEBUG_VM
+		//printk("free hit: addr=%lx, table_page=%px\n", addr, pmd_page(*pmd));
+#endif
+		if(tlb->mm->flags & MMF_USE_ODF_MASK) {
+			//temporarily disable free page table pages for relevant processes
+		} else {
+			free_pte_range(tlb, pmd, addr);
+		}
 	} while (pmd++, addr = next, addr != end);
 
 	start &= PUD_MASK;
@@ -973,10 +980,10 @@ static int copy_pte_range_tfork(struct mm_struct *dst_mm,
 
 	src_pte = tfork_pte_offset_map(src_pmd_val, addr); //src_pte points to the old table
 	if(!pmd_iswrite(*dst_pmd)) {
-#ifdef CONFIG_DEBUG_VM
-		printk("copy_pte_range_tfork: allocating a new table\n");
-#endif
 		dst_pte = tfork_pte_alloc_map_lock(dst_mm, dst_pmd, addr, &dst_ptl);  //dst_pte points to a new table
+#ifdef CONFIG_DEBUG_VM
+		printk("copy_pte_range_tfork: allocated new table. addr=%lx, prev_table_page=%px, table_page=%px\n", addr, pmd_page(src_pmd_val), pmd_page(*dst_pmd));
+#endif
 	} else {
 		dst_pte = pte_alloc_map_lock(dst_mm, dst_pmd, addr, &dst_ptl);
 	}
@@ -1114,9 +1121,6 @@ static inline int copy_pmd_range_tfork(struct mm_struct *dst_mm, struct mm_struc
 			set_pmd_at(src_mm, addr, src_pmd, src_pmd_value);
 		}
 		table_page = pmd_page(*src_pmd);
-		if(atomic64_read(&(table_page->pte_table_refcount)) < 0) {
-			atomic64_set(&(table_page->pte_table_refcount), 0);
-		}
 		if(vma->pte_table_counter_pending) { // kyz : the old VMA hasn't been counted in the PTE table, count it now
 			atomic64_add(2, &(table_page->pte_table_refcount));
 #ifdef CONFIG_DEBUG_VM
@@ -1609,6 +1613,7 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 		table_start = pte_table_start(addr);
 
 		if((!pmd_iswrite(*pmd)) && (!vma->pte_table_counter_pending)) {//shared pte table. vma has gone through odf
+			/*
 			table_end = pte_table_end(addr);
 			if(table_start < vma->vm_start || table_end > vma->vm_end) {
 #ifdef CONFIG_DEBUG_VM
@@ -1622,9 +1627,7 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 #ifdef CONFIG_DEBUG_VM
 						printk("zap_pmd_range: no more VMAs in this process are using the table, but there are other processes using it\n");
 #endif
-						copy_pte_range_tfork(vma->vm_mm, pmd, *pmd, vma, (addr>table_start)?addr:table_start, (end<table_end)?end:table_end); //free_pte_range WILL be called. we have no option but to copy this one VMA.
-						next = zap_pte_range(tlb, vma, pmd, addr, next, details, false);
-						atomic64_dec(&(pmd_page(*pmd)->pte_table_refcount));
+						pmd_clear(pmd);
 					}
 				} else {
 #ifdef CONFIG_DEBUG_VM
@@ -1638,9 +1641,10 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 #endif
 				//kyz: shared and fully covered by the VMA, preserve the pte entries
 				next = zap_pte_range(tlb, vma, pmd, addr, next, details, true);
-				dereference_pte_table(*pmd, false, vma->vm_mm, addr);
-				set_pmd_at(vma->vm_mm, addr, pmd, pmd_mknonpresent(*pmd));
+				dereference_pte_table(*pmd, true, vma->vm_mm, addr);
+				pmd_clear(pmd);
 			}
+			*/
 		} else {
 			next = zap_pte_range(tlb, vma, pmd, addr, next, details, false);
 			if(!vma->pte_table_counter_pending) {
