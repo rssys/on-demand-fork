@@ -249,11 +249,7 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 #ifdef CONFIG_DEBUG_VM
 		//printk("free hit: addr=%lx, table_page=%px\n", addr, pmd_page(*pmd));
 #endif
-		if(tlb->mm->flags & MMF_USE_ODF_MASK) {
-			//temporarily disable free page table pages for relevant processes
-		} else {
-			free_pte_range(tlb, pmd, addr);
-		}
+		free_pte_range(tlb, pmd, addr);
 	} while (pmd++, addr = next, addr != end);
 
 	start &= PUD_MASK;
@@ -1613,7 +1609,6 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 		table_start = pte_table_start(addr);
 
 		if((!pmd_iswrite(*pmd)) && (!vma->pte_table_counter_pending)) {//shared pte table. vma has gone through odf
-			/*
 			table_end = pte_table_end(addr);
 			if(table_start < vma->vm_start || table_end > vma->vm_end) {
 #ifdef CONFIG_DEBUG_VM
@@ -1644,7 +1639,6 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 				dereference_pte_table(*pmd, true, vma->vm_mm, addr);
 				pmd_clear(pmd);
 			}
-			*/
 		} else {
 			next = zap_pte_range(tlb, vma, pmd, addr, next, details, false);
 			if(!vma->pte_table_counter_pending) {
@@ -4726,19 +4720,7 @@ retry_pud:
 			printk("__handle_mm_fault: PID=%d, addr=%lx\n", current->pid, address);
 #endif
 			ptl = pmd_lock(mm, vmf.pmd);
-
-			//optimization: if the VMA is the only user of the shared table, do not copy!
-			unsigned long table_start = pte_table_start(vmf.address);
-			unsigned long table_end = pte_table_end(vmf.address);
-			int count = atomic64_read(&(pmd_page(*(vmf.pmd))->pte_table_refcount));
-			if(table_start >= vma->vm_start && table_end <= vma->vm_end && count==1) {
-#ifdef CONFIG_DEBUG_VM
-				printk("__handle_mm_fault: reposessing a shared table for addr=%lx\n", address);
-#endif
-				set_pmd_at(vmf.vma->vm_mm, vmf.address, vmf.pmd, pmd_mkwrite(*(vmf.pmd)));  //shares the table with the child
-			} else {
-				tfork_one_pte_table(mm, vmf.pmd, vmf.address, 0u);
-			}
+			tfork_one_pte_table(mm, vmf.pmd, vmf.address, 0u);
 			spin_unlock(ptl);
 		}
 	}

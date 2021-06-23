@@ -2377,6 +2377,7 @@ do_mmap_pgoff(struct file *file, unsigned long addr,
 #ifdef CONFIG_MMU
 extern int __mm_populate(unsigned long addr, unsigned long len,
 			 int ignore_errors);
+extern int __mm_populate_nolock(unsigned long addr, unsigned long len, int ignore_errors);
 static inline void mm_populate(unsigned long addr, unsigned long len)
 {
 	/* Ignore errors */

@@ -47,6 +47,7 @@
 #include <linux/pkeys.h>
 #include <linux/oom.h>
 #include <linux/sched/mm.h>
+#include <linux/pagewalk.h>
 
 #include <linux/uaccess.h>
 #include <asm/cacheflush.h>
@@ -268,6 +269,9 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 
 success:
 	populate = newbrk > oldbrk && (mm->def_flags & VM_LOCKED) != 0;
+	if(mm->flags & MMF_USE_ODF_MASK) { //for ODF
+		populate = true;
+	}
 	if (downgraded)
 		up_read(&mm->mmap_sem);
 	else
@@ -1110,6 +1114,48 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
  * parameter) may establish ptes with the wrong permissions of NNNN
  * instead of the right permissions of XXXX.
  */
+static int pgtable_counter_fixup_pmd_entry(pmd_t *pmd, unsigned long addr,
+			       unsigned long next, struct mm_walk *walk)
+{
+	struct page *table_page;
+	table_page = pmd_page(*pmd);
+	atomic64_inc(&(table_page->pte_table_refcount));
+
+#ifdef CONFIG_DEBUG_VM
+	printk("fixup inc: addr=%lx\n", addr);
+#endif
+
+	walk->action = ACTION_CONTINUE;  //skip pte level
+	return 0;
+}
+
+static int pgtable_counter_fixup_test(unsigned long addr, unsigned long next,
+			  struct mm_walk *walk)
+{
+	return 0;
+}
+
+static const struct mm_walk_ops pgtable_counter_fixup_walk_ops = {
+.pmd_entry = pgtable_counter_fixup_pmd_entry,
+.test_walk = pgtable_counter_fixup_test
+};
+
+int merge_vma_pgtable_counter_fixup(struct vm_area_struct *vma, unsigned long start, unsigned long end) {
+	if(vma->pte_table_counter_pending) {
+		return 0;
+	} else {
+#ifdef CONFIG_DEBUG_VM
+		printk("merge fixup: vm_start=%lx, vm_end=%lx, inc start=%lx, inc end=%lx\n", vma->vm_start, vma->vm_end, start, end);
+#endif
+		start = pte_table_end(start);
+		end = pte_table_start(end);
+		__mm_populate_nolock(start, end-start, 1); //popuate tables for extended address range so that we can increment counters
+		walk_page_range(vma->vm_mm, start, end, &pgtable_counter_fixup_walk_ops, NULL);
+	}
+
+	return 0;
+}
+
 struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			struct vm_area_struct *prev, unsigned long addr,
 			unsigned long end, unsigned long vm_flags,
@@ -1170,6 +1216,9 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 		if (err)
 			return NULL;
 		khugepaged_enter_vma_merge(prev, vm_flags);
+
+		merge_vma_pgtable_counter_fixup(prev, addr, end);
+
 		return prev;
 	}
 
@@ -1197,6 +1246,9 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 		if (err)
 			return NULL;
 		khugepaged_enter_vma_merge(area, vm_flags);
+
+		merge_vma_pgtable_counter_fixup(area, addr, end);
+
 		return area;
 	}
 
@@ -1543,8 +1595,15 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
-	     (flags & (MAP_POPULATE | MAP_NONBLOCK)) == MAP_POPULATE))
+	     (flags & (MAP_POPULATE | MAP_NONBLOCK)) == MAP_POPULATE ||
+		(mm->flags & MMF_USE_ODF_MASK))) {
+#ifdef CONFIG_DEBUG_VM
+		if(mm->flags & MMF_USE_ODF_MASK) {
+			printk("mmap: force populate, addr=%lx, len=%lx\n", addr, len);
+		}
+#endif
 		*populate = len;
+	}
 	return addr;
 }
 
@@ -2700,6 +2759,30 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	return __split_vma(mm, vma, addr, new_below);
 }
 
+/* left and right vma after the split, address of split */
+int split_vma_pgtable_counter_fixup(struct vm_area_struct *lvma, struct vm_area_struct *rvma, bool orig_pending_flag) {
+	if(orig_pending_flag) {
+		return 0;  //the new vma will have pending flag as true by default, just as the old vma
+	} else {
+#ifdef CONFIG_DEBUG_VM
+		printk("split fixup: set vma flag to false, rvma_start=%lx\n", rvma->vm_start);
+#endif
+		lvma->pte_table_counter_pending = false;
+		rvma->pte_table_counter_pending = false;
+
+		if(pte_table_start(rvma->vm_start) == rvma->vm_start) {  //the split was right at the pte table boundary
+			return 0;  //the only case where we don't increment pte table counter
+		} else {
+#ifdef CONFIG_DEBUG_VM
+			printk("split fixup: rvma_start=%lx\n", rvma->vm_start);
+#endif
+			walk_page_range(rvma->vm_mm, pte_table_start(rvma->vm_start), pte_table_end(rvma->vm_start), &pgtable_counter_fixup_walk_ops, NULL);
+		}
+	}
+
+	return 0;
+}
+
 /* Munmap is split into 2 main parts -- this part which finds
  * what needs doing, and the areas themselves, which do the
  * work.  This now handles partial unmappings.
@@ -2759,21 +2842,18 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		if (error)
 			return error;
 		prev = vma;
+
+		split_vma_pgtable_counter_fixup(prev, prev->vm_next, prev->pte_table_counter_pending);
 	}
 
 	/* Does it split the last one? */
 	last = find_vma(mm, end);
 	if (last && end > last->vm_start) {
-		//kyz: never unmaps part of a VMA, unless called by exit_mmap()
-		if(!last->pte_table_counter_pending) { //the VMA has gone through an ODF
-#ifdef CONFIG_DEBUG_VM
-			printk("__do_munmap: start=%lx, end=%lx, the last VMA in range is split\n", start, end);
-#endif
-			return -EINVAL;
-		}
 		int error = __split_vma(mm, last, end, 1);
 		if (error)
 			return error;
+
+		split_vma_pgtable_counter_fixup(last->vm_prev, last, last->pte_table_counter_pending);
 	}
 	vma = prev ? prev->vm_next : mm->mmap;
 
