@@ -1,6 +1,6 @@
 On-demand-fork
 ------------
-**Advisory: Due to a bug involving some applications, a temporary workaround has been applied that does not free pages for applications that use ODF. Updates will be posted here.**
+**UPDATED 06/23/2021: A bug involving splitting and merging VMAs have been fixed.**
 
 On-demand-fork (ODF) is a fast implementation of the fork system call specifically designed for applications with large memory footprints and a requirement for low fork latency. 
 
