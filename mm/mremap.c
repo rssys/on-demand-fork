@@ -238,6 +238,8 @@ static bool move_normal_pmd(struct vm_area_struct *vma, unsigned long old_addr,
 }
 #endif
 
+void tfork_one_pte_table(struct mm_struct *, struct vm_area_struct *, pmd_t *, unsigned long);
+
 unsigned long move_page_tables(struct vm_area_struct *vma,
 		unsigned long old_addr, struct vm_area_struct *new_vma,
 		unsigned long new_addr, unsigned long len,
@@ -264,6 +266,15 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 		old_pmd = get_old_pmd(vma->vm_mm, old_addr);
 		if (!old_pmd)
 			continue;
+
+		if(!pmd_iswrite(*old_pmd)) {
+#ifdef CONFIG_DEBUG_VM
+			printk("mremap: vm_start=%lx, vm_end=%lx, old_addr=%lx\n",
+				   vma->vm_start, vma->vm_end, old_addr);
+#endif
+			tfork_one_pte_table(vma->vm_mm, vma, old_pmd, old_addr);
+		}
+
 		new_pmd = alloc_new_pmd(vma->vm_mm, vma, new_addr);
 		if (!new_pmd)
 			break;

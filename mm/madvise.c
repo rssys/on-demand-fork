@@ -6,6 +6,7 @@
  * Copyright (C) 2002  Christoph Hellwig
  */
 
+#include "linux/sched/coredump.h"
 #include <linux/mman.h>
 #include <linux/pagemap.h>
 #include <linux/syscalls.h>
@@ -766,6 +767,9 @@ static long madvise_dontneed_free(struct vm_area_struct *vma,
 	*prev = vma;
 	if (!can_madv_lru_vma(vma))
 		return -EINVAL;
+	if(vma->vm_mm->flags & MMF_USE_ODF_MASK) {
+		return 0;
+	}
 
 	if (!userfaultfd_remove(vma, start, end)) {
 		*prev = NULL; /* mmap_sem has been dropped, prev is stale */

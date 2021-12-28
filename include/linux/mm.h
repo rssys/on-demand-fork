@@ -528,7 +528,6 @@ static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 	memset(vma, 0, sizeof(*vma));
 	vma->vm_mm = mm;
 	vma->vm_ops = &dummy_vm_ops;
-	vma->pte_table_counter_pending = true;
 	INIT_LIST_HEAD(&vma->anon_vma_chain);
 }
 
@@ -1976,7 +1975,7 @@ static inline bool pgtable_pte_page_ctor(struct page *page)
 	inc_zone_page_state(page, NR_PAGETABLE);
 
 	//kyz
-	atomic64_set(&(page->pte_table_refcount), 0);
+	atomic64_set(&(page->pte_table_refcount), 1);
 
 	return true;
 }

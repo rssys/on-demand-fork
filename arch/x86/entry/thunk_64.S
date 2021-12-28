@@ -46,12 +46,10 @@ SYM_FUNC_END(\name)
 	THUNK lockdep_sys_exit_thunk,lockdep_sys_exit
 #endif
 
-#ifdef CONFIG_PREEMPTION
 	THUNK ___preempt_schedule, preempt_schedule
 	THUNK ___preempt_schedule_notrace, preempt_schedule_notrace
 	EXPORT_SYMBOL(___preempt_schedule)
 	EXPORT_SYMBOL(___preempt_schedule_notrace)
-#endif
 
 #if defined(CONFIG_TRACE_IRQFLAGS) \
  || defined(CONFIG_DEBUG_LOCK_ALLOC) \

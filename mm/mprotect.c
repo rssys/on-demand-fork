@@ -369,8 +369,6 @@ static const struct mm_walk_ops prot_none_walk_ops = {
 	.test_walk		= prot_none_test,
 };
 
-int split_vma_pgtable_counter_fixup(struct vm_area_struct *lvma, struct vm_area_struct *rvma, bool orig_pending_flag);
-
 int
 mprotect_fixup(struct vm_area_struct *vma, struct vm_area_struct **pprev,
 	unsigned long start, unsigned long end, unsigned long newflags)
@@ -443,16 +441,12 @@ mprotect_fixup(struct vm_area_struct *vma, struct vm_area_struct **pprev,
 		error = split_vma(mm, vma, start, 1);
 		if (error)
 			goto fail;
-
-		split_vma_pgtable_counter_fixup(vma->vm_prev, vma, vma->pte_table_counter_pending);
 	}
 
 	if (end != vma->vm_end) {
 		error = split_vma(mm, vma, end, 0);
 		if (error)
 			goto fail;
-
-		split_vma_pgtable_counter_fixup(vma, vma->vm_next, vma->pte_table_counter_pending);
 	}
 
 success:
