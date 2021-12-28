@@ -1,12 +1,16 @@
 On-demand-fork
 ------------
-**UPDATED 06/23/2021: A bug involving splitting and merging VMAs have been fixed.**
 
 On-demand-fork (ODF) is a fast implementation of the fork system call specifically designed for applications with large memory footprints and a requirement for low fork latency. 
 
 ODF improves the latency of fork by deferring the work of copying page tables to the page fault handler, and increases efficiency of fork by selectively copying page tables on-demand. 
 
-On-demand-fork appeared on EuroSys 2021. You can find the paper at this [link](https://doi.org/10.1145/3447786.3456258). The BibTex citation of the work is
+The On-demand-fork paper is published at EuroSys 2021 as:
+
+> **On-Demand-Fork: A Microsecond Fork for Memory-Intensive and Latency-Sensitive Applications**\
+Kaiyang Zhao, Sishuai Gong, and Pedro Fonseca.
+
+You can find the paper at this [link](https://doi.org/10.1145/3447786.3456258). The BibTex citation of the work is
 ```
 @inproceedings{10.1145/3447786.3456258,
 author = {Zhao, Kaiyang and Gong, Sishuai and Fonseca, Pedro},
