@@ -152,7 +152,10 @@ struct page {
 			struct list_head deferred_list;
 		};
 		struct {	/* Page table pages */
-			unsigned long _pt_pad_1;	/* compound_head */
+			union {
+				unsigned long _pt_pad_1; /* compound_head */
+				pmd_t *cow_pte_owner; /* cow pte: pmd */
+			};
 			pgtable_t pmd_huge_pte; /* protected by page->ptl */
 			unsigned long _pt_pad_2;	/* mapping */
 			union {
