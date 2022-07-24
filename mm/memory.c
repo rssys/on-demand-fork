@@ -509,6 +509,37 @@ static inline void add_mm_rss_vec(struct mm_struct *mm, int *rss)
 			add_mm_counter(mm, i, rss[i]);
 }
 
+static void cow_pte_rss(struct mm_struct *mm, struct vm_area_struct *vma,
+			       pmd_t *pmdp, unsigned long addr,
+			       unsigned long end, bool inc_dec)
+{
+	int rss[NR_MM_COUNTERS];
+	spinlock_t *ptl;
+	pte_t *orig_ptep, *ptep;
+	struct page *page;
+
+	init_rss_vec(rss);
+
+	ptep = pte_offset_map_lock(mm, pmdp, addr, &ptl);
+	orig_ptep = ptep;
+	arch_enter_lazy_mmu_mode();
+	do {
+		if (pte_none(*ptep))
+			continue;
+
+		page = vm_normal_page(vma, addr, *ptep);
+		if (page) {
+			if (inc_dec)
+				rss[mm_counter(page)]++;
+			else
+				rss[mm_counter(page)]--;
+		}
+	} while (ptep++, addr += PAGE_SIZE, addr != end);
+	arch_leave_lazy_mmu_mode();
+	pte_unmap_unlock(orig_ptep, ptl);
+	add_mm_rss_vec(mm, rss);
+}
+
 /*
  * This function is called to print an error when a bad pte
  * is found. For example, we might have a PFN-mapped pte in
@@ -2818,6 +2849,68 @@ int apply_to_existing_page_range(struct mm_struct *mm, unsigned long addr,
 	return __apply_to_page_range(mm, addr, size, fn, data, false);
 }
 EXPORT_SYMBOL_GPL(apply_to_existing_page_range);
+
+/**
+ * cow_pte_fallback - reuse the shared PTE table
+ * @vma: vma that coever the shared PTE table
+ * @pmd: pmd index maps to the shared PTE table
+ * @addr: the address trigger the break COW,
+ *
+ * Reuse the shared (COW) PTE table when the refcount is equal to one.
+ * @addr needs to be in the range of the shared PTE table that @vma and
+ * @pmd mapped to it.
+ *
+ * COW PTE fallback to normal PTE:
+ * - two state here
+ *   - After break child :   [parent, rss=1, ref=1, write=NO , owner=parent]
+ *                        to [parent, rss=1, ref=1, write=YES, owner=NULL  ]
+ *   - After break parent:   [child , rss=0, ref=1, write=NO , owner=NULL  ]
+ *                        to [child , rss=1, ref=1, write=YES, owner=NULL  ]
+ */
+void cow_pte_fallback(struct vm_area_struct *vma, pmd_t *pmd,
+		      unsigned long addr)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	struct vm_area_struct *prev = vma->vm_prev;
+	struct vm_area_struct *next = vma->vm_next;
+	unsigned long start, end;
+	pmd_t new;
+
+	VM_WARN_ON(pmd_write(*pmd));
+
+	start = addr & PMD_MASK;
+	end = (addr + PMD_SIZE) & PMD_MASK;
+
+	/*
+	 * If pmd is not owner, it needs to increase the rss.
+	 * Since only the owner has the RSS state for the COW PTE.
+	 */
+	if (!cow_pte_owner_is_same(pmd, pmd)) {
+		/* The part of address range is covered by previous. */
+		if (start < vma->vm_start && prev && start < prev->vm_end) {
+			cow_pte_rss(mm, prev, pmd,
+				    start, prev->vm_end, true /* inc */);
+			start = vma->vm_start;
+		}
+		/* The part of address range is covered by next. */
+		if (end > vma->vm_end && next && end > next->vm_start) {
+			cow_pte_rss(mm, next, pmd,
+				    next->vm_start, end, true /* inc */);
+			end = vma->vm_end;
+		}
+		cow_pte_rss(mm, vma, pmd, start, end, true /* inc */);
+
+		mm_inc_nr_ptes(mm);
+		/* Memory barrier here is the same as pmd_install(). */
+		smp_wmb();
+		pmd_populate(mm, pmd, pmd_page(*pmd));
+	}
+
+	/* Reuse the pte page */
+	set_cow_pte_owner(pmd, NULL);
+	new = pmd_mkwrite(*pmd);
+	set_pmd_at(mm, addr, pmd, new);
+}
 
 /*
  * handle_pte_fault chooses page fault handler according to an entry which was

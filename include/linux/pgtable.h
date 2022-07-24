@@ -615,6 +615,9 @@ static inline int pte_unused(pte_t pte)
 }
 #endif
 
+void cow_pte_fallback(struct vm_area_struct *vma, pmd_t *pmd,
+		      unsigned long addr);
+
 static inline void set_cow_pte_owner(pmd_t *pmd, pmd_t *owner)
 {
 	smp_store_release(&pmd_page(*pmd)->cow_pte_owner, owner);
