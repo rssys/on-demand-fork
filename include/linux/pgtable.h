@@ -9,6 +9,7 @@
 #ifdef CONFIG_MMU
 
 #include <linux/mm_types.h>
+#include <linux/page_ref.h>
 #include <linux/bug.h>
 #include <linux/errno.h>
 #include <asm-generic/pgtable_uffd.h>
@@ -626,6 +627,33 @@ static inline void set_cow_pte_owner(pmd_t *pmd, pmd_t *owner)
 static inline bool cow_pte_owner_is_same(pmd_t *pmd, pmd_t *owner)
 {
 	return smp_load_acquire(&pmd_page(*pmd)->cow_pte_owner) == owner;
+}
+
+static inline int pmd_get_pte(pmd_t *pmd)
+{
+	return page_ref_inc_return(pmd_page(*pmd));
+}
+
+/*
+ * If the COW PTE refcount is 1, instead of decreasing the counter,
+ * clear write protection of the corresponding PMD entry and reset
+ * the COW PTE owner to reuse the table.
+ * But if the reuse parameter is false, do not thing. This help us
+ * to handle the situation that PTE table we already handled.
+ */
+static inline int pmd_put_pte(struct vm_area_struct *vma, pmd_t *pmd,
+			      unsigned long addr, bool reuse)
+{
+	if (!page_ref_add_unless(pmd_page(*pmd), -1, 1) && reuse) {
+		cow_pte_fallback(vma, pmd, addr);
+		return 1;
+	}
+	return 0;
+}
+
+static inline int cow_pte_count(pmd_t *pmd)
+{
+	return page_count(pmd_page(*pmd));
 }
 
 #ifndef pte_access_permitted
