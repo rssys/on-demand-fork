@@ -251,6 +251,11 @@ restart:
 			step_forward(pvmw, PMD_SIZE);
 			continue;
 		}
+
+		/* TODO: Does breaking COW PTE here is correct? */
+		if (pvmw->flags & PVMW_COW_PTE)
+			handle_cow_pte(vma, pvmw->pmd, pvmw->address, false);
+
 		if (!map_pte(pvmw))
 			goto next_pte;
 this_pte:

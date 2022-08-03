@@ -312,6 +312,8 @@ int make_device_exclusive_range(struct mm_struct *mm, unsigned long start,
 #define PVMW_SYNC		(1 << 0)
 /* Look for migration entries rather than present PTEs */
 #define PVMW_MIGRATION		(1 << 1)
+/* Break COW PTE during the walking */
+#define PVMW_COW_PTE		(1 << 2)
 
 struct page_vma_mapped_walk {
 	unsigned long pfn;

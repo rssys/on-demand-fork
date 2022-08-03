@@ -1822,6 +1822,7 @@ retry:
 		/*
 		 * The folio is mapped into the page tables of one or more
 		 * processes. Try to unmap it here.
+		 * It will write to the page tables, break COW PTE here.
 		 */
 		if (folio_mapped(folio)) {
 			enum ttu_flags flags = TTU_BATCH_FLUSH;
