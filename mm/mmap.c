@@ -2688,6 +2688,9 @@ int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 			return err;
 	}
 
+	if (handle_cow_pte(vma, NULL, addr, true) < 0)
+		return -ENOMEM;
+
 	new = vm_area_dup(vma);
 	if (!new)
 		return -ENOMEM;

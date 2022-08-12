@@ -250,6 +250,9 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 		next = pmd_addr_end(addr, end);
 		if (pmd_none_or_clear_bad(pmd))
 			continue;
+		VM_BUG_ON(cow_pte_count(pmd) != 1);
+		if (!pmd_cow_pte_exclusive(pmd))
+			VM_BUG_ON(!cow_pte_owner_is_same(pmd, NULL));
 		free_pte_range(tlb, pmd, addr);
 	} while (pmd++, addr = next, addr != end);
 
@@ -1006,7 +1009,12 @@ copy_present_pte(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	 * in the parent and the child
 	 */
 	if (is_cow_mapping(vm_flags) && pte_write(pte)) {
-		ptep_set_wrprotect(src_mm, addr, src_pte);
+		/*
+		 * If parent's PTE table is COWing, keep it as it is.
+		 * Don't set wrprotect to that table.
+		 */
+		if (!__is_pte_table_cowing(src_vma, NULL, addr))
+			ptep_set_wrprotect(src_mm, addr, src_pte);
 		pte = pte_wrprotect(pte);
 	}
 	VM_BUG_ON(page && PageAnon(page) && PageAnonExclusive(page));
@@ -1197,11 +1205,64 @@ copy_pmd_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 				continue;
 			/* fall through */
 		}
-		if (pmd_none_or_clear_bad(src_pmd))
-			continue;
-		if (copy_pte_range(dst_vma, src_vma, dst_pmd, src_pmd,
-				   addr, next))
-			return -ENOMEM;
+
+		if (is_cow_pte_available(src_vma, src_pmd)) {
+			/*
+			 * Setting wrprotect to pmd entry will trigger
+			 * pmd_bad() for normal PTE table. Skip the bad
+			 * checking here.
+			 */
+			if (pmd_none(*src_pmd))
+				continue;
+
+			/* Skip if the PTE already COW this time. */
+			if (!pmd_none(*dst_pmd) && !pmd_write(*dst_pmd))
+				continue;
+
+			/*
+			 * If PTE doesn't have an owner, the parent needs to
+			 * take this PTE.
+			 */
+			if (cow_pte_owner_is_same(src_pmd, NULL)) {
+				set_cow_pte_owner(src_pmd, src_pmd);
+				/*
+				 * XXX: The process may COW PTE fork two times.
+				 * But in some situations, owner has cleared.
+				 * Previously Child (This time is the parent)
+				 * COW PTE forking, but previously parent, the
+				 * owner , break COW. So it needs to add back
+				 * the RSS state and pgtable bytes.
+				 */
+				if (!pmd_write(*src_pmd)) {
+					cow_pte_rss(src_mm, src_vma, src_pmd,
+						    get_pmd_start_edge(src_vma,
+									addr),
+						    get_pmd_end_edge(src_vma,
+									addr),
+						    true /* inc */);
+					/* Do we need pt lock here? */
+					mm_inc_nr_ptes(src_mm);
+					/* See the comments in pmd_install(). */
+					smp_wmb();
+					pmd_populate(src_mm, src_pmd,
+						     pmd_page(*src_pmd));
+				}
+			}
+
+			pmdp_set_wrprotect(src_mm, addr, src_pmd);
+
+			/* Child reference count */
+			pmd_get_pte(src_pmd);
+
+			/* COW for PTE table */
+			set_pmd_at(dst_mm, addr, dst_pmd, *src_pmd);
+		} else {
+			if (pmd_none_or_clear_bad(src_pmd))
+				continue;
+			if (copy_pte_range(dst_vma, src_vma, dst_pmd, src_pmd,
+					   addr, next))
+				return -ENOMEM;
+		}
 	} while (dst_pmd++, src_pmd++, addr = next, addr != end);
 	return 0;
 }
@@ -1595,6 +1656,10 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 			 */
 			spin_unlock(ptl);
 		}
+
+		/* TODO: Does TLB needs to flush page info in COWed table? */
+		if (is_pte_table_cowing(vma, pmd))
+			handle_cow_pte(vma, pmd, addr, false);
 
 		/*
 		 * Here there can be other concurrent MADV_DONTNEED or
@@ -5329,6 +5394,16 @@ retry_pud:
 				return 0;
 			}
 		}
+
+		/*
+		 * When the PMD entry is set with write protection, it needs to
+		 * handle the on-demand PTE. It will allocate a new PTE and copy
+		 * the old one, then set this entry writeable and decrease the
+		 * reference count at COW PTE.
+		 */
+		if (handle_cow_pte(vmf.vma, vmf.pmd, vmf.real_address,
+				   cow_pte_count(&vmf.orig_pmd) > 1) < 0)
+			return VM_FAULT_OOM;
 	}
 
 	return handle_pte_fault(&vmf);
