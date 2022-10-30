@@ -2989,6 +2989,7 @@ static inline int copy_cow_pte_range(struct vm_area_struct *vma,
 
 	is_cow = is_cow_mapping(vma->vm_flags);
 	if (is_cow) {
+		flush_tlb_range(vma, start, end);
 		mmu_notifier_range_init(&range, MMU_NOTIFY_PROTECTION_PAGE,
 					0, vma, mm, start, end);
 		mmu_notifier_invalidate_range_start(&range);
@@ -3081,7 +3082,7 @@ static int break_cow_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	/* Already handled it, don't reuse cowed table. */
 	pmd_put_pte(vma, &cowed_entry, addr, false);
 
-	VM_BUG_ON(cow_pte_count(pmd) != 1);
+	VM_WARN_ON(cow_pte_count(pmd) != 1);
 
 	return 0;
 }

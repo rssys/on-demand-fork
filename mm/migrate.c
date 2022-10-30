@@ -173,7 +173,9 @@ void putback_movable_pages(struct list_head *l)
 static bool remove_migration_pte(struct folio *folio,
 		struct vm_area_struct *vma, unsigned long addr, void *old)
 {
-	DEFINE_FOLIO_VMA_WALK(pvmw, old, vma, addr, PVMW_SYNC | PVMW_MIGRATION);
+	/* When migrating to another node, break COW PTE. */
+	DEFINE_FOLIO_VMA_WALK(pvmw, old, vma, addr,
+			      PVMW_SYNC | PVMW_MIGRATION | PVMW_COW_PTE);
 
 	while (page_vma_mapped_walk(&pvmw)) {
 		rmap_t rmap_flags = RMAP_NONE;
