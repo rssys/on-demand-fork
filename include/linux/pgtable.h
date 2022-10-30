@@ -656,6 +656,24 @@ static inline int cow_pte_count(pmd_t *pmd)
 	return page_count(pmd_page(*pmd));
 }
 
+/* Keep the first bit clear. See more detail in the comments of struct page. */
+#define COW_PTE_OWNER_EXCLUSIVE ((pmd_t *) 0x02UL)
+
+static inline void pmd_cow_pte_mkexclusive(pmd_t *pmd)
+{
+	set_cow_pte_owner(pmd, COW_PTE_OWNER_EXCLUSIVE);
+}
+
+static inline bool pmd_cow_pte_exclusive(pmd_t *pmd)
+{
+	return cow_pte_owner_is_same(pmd, COW_PTE_OWNER_EXCLUSIVE);
+}
+
+static inline void pmd_cow_pte_clear_mkexclusive(pmd_t *pmd)
+{
+	set_cow_pte_owner(pmd, NULL);
+}
+
 #ifndef pte_access_permitted
 #define pte_access_permitted(pte, write) \
 	(pte_present(pte) && (!(write) || pte_write(pte)))

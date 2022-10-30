@@ -646,6 +646,11 @@ retry:
 		mark_page_accessed(page);
 	}
 out:
+	/*
+	 * We don't share the PTE when any other pinned page exists. And
+	 * let the exclusive flag stick around until the table is freed.
+	 */
+	pmd_cow_pte_mkexclusive(pmd);
 	pte_unmap_unlock(ptep, ptl);
 	return page;
 no_page:
@@ -2798,8 +2803,12 @@ static int gup_pmd_range(pud_t *pudp, pud_t pud, unsigned long addr, unsigned lo
 			if (!gup_huge_pd(__hugepd(pmd_val(pmd)), addr,
 					 PMD_SHIFT, next, flags, pages, nr))
 				return 0;
-		} else if (!gup_pte_range(pmd, pmdp, addr, next, flags, pages, nr))
-			return 0;
+		} else {
+			if (!gup_pte_range(pmd, pmdp, addr, next,
+					   flags, pages, nr))
+				return 0;
+			pmd_cow_pte_mkexclusive(pmdp);
+		}
 	} while (pmdp++, addr = next, addr != end);
 
 	return 1;
