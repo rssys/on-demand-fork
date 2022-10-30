@@ -2345,6 +2345,15 @@ static int prctl_set_vma(unsigned long opt, unsigned long start,
 }
 #endif /* CONFIG_ANON_VMA_NAME */
 
+static int prctl_set_cow_pte(struct mm_struct *mm)
+{
+	if (test_bit(MMF_COW_PTE, &mm->flags))
+		return -EINVAL;
+	else
+		set_bit(MMF_COW_PTE_READY, &mm->flags);
+	return 0;
+}
+
 SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		unsigned long, arg4, unsigned long, arg5)
 {
@@ -2622,6 +2631,9 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 #endif
 	case PR_SET_VMA:
 		error = prctl_set_vma(arg2, arg3, arg4, arg5);
+		break;
+	case PR_SET_COW_PTE:
+		error = prctl_set_cow_pte(me->mm);
 		break;
 	default:
 		error = -EINVAL;

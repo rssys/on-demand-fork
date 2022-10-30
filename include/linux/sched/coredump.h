@@ -84,7 +84,11 @@ static inline int get_dumpable(struct mm_struct *mm)
 #define MMF_HAS_PINNED		28	/* FOLL_PIN has run, never cleared */
 #define MMF_DISABLE_THP_MASK	(1 << MMF_DISABLE_THP)
 
+#define MMF_COW_PTE_READY	29 /* Share PTE tables in next time of fork() */
+#define MMF_COW_PTE		30 /* PTE tables are shared between processes */
+#define MMF_COW_PTE_MASK	(1 << MMF_COW_PTE)
+
 #define MMF_INIT_MASK		(MMF_DUMPABLE_MASK | MMF_DUMP_FILTER_MASK |\
-				 MMF_DISABLE_THP_MASK)
+				 MMF_DISABLE_THP_MASK | MMF_COW_PTE_MASK)
 
 #endif /* _LINUX_SCHED_COREDUMP_H */

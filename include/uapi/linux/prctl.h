@@ -284,4 +284,10 @@ struct prctl_mm_map {
 #define PR_SET_VMA		0x53564d41
 # define PR_SET_VMA_ANON_NAME		0
 
+/*
+ * Set the prepare flag, MMF_COW_PTE_READY, to do the share (copy-on-write)
+ * page table in the next time of fork.
+ */
+#define PR_SET_COW_PTE			65
+
 #endif /* _LINUX_PRCTL_H */
