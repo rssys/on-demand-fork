@@ -692,6 +692,9 @@ static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 			return page;
 		return no_page_table(vma, flags);
 	}
+	if (is_pte_table_cowing(vma, pmd))
+		handle_cow_pte(vma, pmd, address, true);
+
 retry:
 	if (!pmd_present(pmdval)) {
 		/*
