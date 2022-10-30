@@ -2970,6 +2970,80 @@ static const struct file_operations proc_coredump_filter_operations = {
 };
 #endif
 
+static ssize_t proc_use_odf_read(struct file *file, char __user *buf,
+					 size_t count, loff_t *ppos)
+{
+	struct task_struct *task = get_proc_task(file_inode(file));
+	struct mm_struct *mm;
+	char buffer[PROC_NUMBUF];
+	size_t len;
+	int ret;
+
+	if (!task)
+		return -ESRCH;
+
+	ret = 0;
+	mm = get_task_mm(task);
+	if (mm) {
+		len = snprintf(buffer, sizeof(buffer), "%lu\n",
+			  ((mm->flags & MMF_COW_PTE_MASK) >> MMF_COW_PTE));
+		mmput(mm);
+		ret = simple_read_from_buffer(buf, count, ppos, buffer, len);
+	}
+
+	put_task_struct(task);
+
+	return ret;
+}
+
+static ssize_t proc_use_odf_write(struct file *file,
+					  const char __user *buf,
+					  size_t count,
+					  loff_t *ppos)
+{
+	struct task_struct *task;
+	struct mm_struct *mm;
+	unsigned int val;
+	int ret;
+
+	ret = kstrtouint_from_user(buf, count, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	ret = -ESRCH;
+	task = get_proc_task(file_inode(file));
+	if (!task)
+		goto out_no_task;
+
+	mm = get_task_mm(task);
+	if (!mm)
+		goto out_no_mm;
+	ret = 0;
+
+	if (test_bit(MMF_COW_PTE, &mm->flags))
+		goto out;
+
+	if (val == 1)
+		set_bit(MMF_COW_PTE_READY, &mm->flags);
+	else if (val == 0)
+		clear_bit(MMF_COW_PTE_READY, &mm->flags);
+
+out:
+	mmput(mm);
+out_no_mm:
+	put_task_struct(task);
+out_no_task:
+	if (ret < 0)
+		return ret;
+	return count;
+}
+
+static const struct file_operations proc_use_odf_operations = {
+	.read		= proc_use_odf_read,
+	.write		= proc_use_odf_write,
+	.llseek		= generic_file_llseek,
+};
+
 #ifdef CONFIG_TASK_IO_ACCOUNTING
 static int do_io_accounting(struct task_struct *task, struct seq_file *m, int whole)
 {
@@ -3304,6 +3378,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_ELF_CORE
 	REG("coredump_filter", S_IRUGO|S_IWUSR, proc_coredump_filter_operations),
 #endif
+	REG("use_odf", S_IRUGO|S_IWUSR, proc_use_odf_operations),
 #ifdef CONFIG_TASK_IO_ACCOUNTING
 	ONE("io",	S_IRUSR, proc_tgid_io_accounting),
 #endif
