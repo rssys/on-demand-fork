@@ -10,6 +10,7 @@
 
 #include <linux/mm_types.h>
 #include <linux/page_ref.h>
+#include <linux/sched/coredump.h> /* For MMF_COW_PTE flag */
 #include <linux/bug.h>
 #include <linux/errno.h>
 #include <asm-generic/pgtable_uffd.h>
@@ -674,6 +675,42 @@ static inline void pmd_cow_pte_clear_mkexclusive(pmd_t *pmd)
 	set_cow_pte_owner(pmd, NULL);
 }
 
+static inline unsigned long get_pmd_start_edge(struct vm_area_struct *vma,
+						unsigned long addr)
+{
+	unsigned long start = addr & PMD_MASK;
+
+	if (start < vma->vm_start)
+		start = vma->vm_start;
+
+	return start;
+}
+
+static inline unsigned long get_pmd_end_edge(struct vm_area_struct *vma,
+						unsigned long addr)
+{
+	unsigned long end = (addr + PMD_SIZE) & PMD_MASK;
+
+	if (end > vma->vm_end)
+		end = vma->vm_end;
+
+	return end;
+}
+
+static inline bool is_cow_pte_available(struct vm_area_struct *vma, pmd_t *pmd)
+{
+	if (!vma || !pmd)
+		return false;
+	if (!test_bit(MMF_COW_PTE, &vma->vm_mm->flags))
+		return false;
+	if (pmd_cow_pte_exclusive(pmd))
+		return false;
+	return true;
+}
+
+int handle_cow_pte(struct vm_area_struct *vma, pmd_t *pmd, unsigned long addr,
+		    bool alloc);
+
 #ifndef pte_access_permitted
 #define pte_access_permitted(pte, write) \
 	(pte_present(pte) && (!(write) || pte_write(pte)))
@@ -961,6 +998,44 @@ static inline void __ptep_modify_prot_commit(struct vm_area_struct *vma,
 	 * preserve.
 	 */
 	set_pte_at(vma->vm_mm, addr, ptep, pte);
+}
+
+static inline bool __is_pte_table_cowing(struct vm_area_struct *vma, pmd_t *pmd,
+				       unsigned long addr)
+{
+	if (!vma)
+		return false;
+	if (!pmd) {
+		pgd_t *pgd;
+		p4d_t *p4d;
+		pud_t *pud;
+
+		if (addr == 0)
+			return false;
+
+		pgd = pgd_offset(vma->vm_mm, addr);
+		if (pgd_none_or_clear_bad(pgd))
+			return false;
+		p4d = p4d_offset(pgd, addr);
+		if (p4d_none_or_clear_bad(p4d))
+			return false;
+		pud = pud_offset(p4d, addr);
+		if (pud_none_or_clear_bad(pud))
+			return false;
+		pmd = pmd_offset(pud, addr);
+	}
+	if (!test_bit(MMF_COW_PTE, &vma->vm_mm->flags))
+		return false;
+	if (pmd_none(*pmd) || pmd_write(*pmd))
+		return false;
+	if (pmd_cow_pte_exclusive(pmd))
+		return false;
+	return true;
+}
+
+static inline bool is_pte_table_cowing(struct vm_area_struct *vma, pmd_t *pmd)
+{
+	return __is_pte_table_cowing(vma, pmd, 0UL);
 }
 
 #ifndef __HAVE_ARCH_PTEP_MODIFY_PROT_TRANSACTION
