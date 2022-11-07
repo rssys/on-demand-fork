@@ -543,6 +543,28 @@ static void cow_pte_rss(struct mm_struct *mm, struct vm_area_struct *vma,
 	add_mm_rss_vec(mm, rss);
 }
 
+static void multiple_cow_pte_rss(struct mm_struct *mm,
+				 struct vm_area_struct *orig_vma,
+				 pmd_t *pmdp, unsigned long pte_start,
+				 unsigned long pte_end, bool inc_dec)
+{
+	struct vm_area_struct *vma = NULL;
+	unsigned long start, end;
+
+	vma = orig_vma;
+	while (vma) {
+		if (vma->vm_start <= pte_start)
+			break;
+		vma = vma->vm_prev;
+	}
+
+	for (;vma && vma->vm_start < pte_end; vma = vma->vm_next) {
+		start = (vma->vm_start < pte_start) ? pte_start : vma->vm_start;
+		end = (pte_end < vma->vm_end) ? pte_end : vma->vm_end;
+		cow_pte_rss(mm, vma, pmdp, start, end, inc_dec);
+	}
+}
+
 /*
  * This function is called to print an error when a bad pte
  * is found. For example, we might have a PFN-mapped pte in
@@ -2936,8 +2958,6 @@ void cow_pte_fallback(struct vm_area_struct *vma, pmd_t *pmd,
 		      unsigned long addr)
 {
 	struct mm_struct *mm = vma->vm_mm;
-	struct vm_area_struct *prev = vma->vm_prev;
-	struct vm_area_struct *next = vma->vm_next;
 	unsigned long start, end;
 	pmd_t new;
 
@@ -2952,19 +2972,7 @@ void cow_pte_fallback(struct vm_area_struct *vma, pmd_t *pmd,
 	 * Since only the owner has the RSS state for the COW PTE.
 	 */
 	if (!cow_pte_owner_is_same(pmd, pmd)) {
-		/* The part of address range is covered by previous. */
-		if (start < vma->vm_start && prev && start < prev->vm_end) {
-			cow_pte_rss(mm, prev, pmd,
-				    start, prev->vm_end, true /* inc */);
-			start = vma->vm_start;
-		}
-		/* The part of address range is covered by next. */
-		if (end > vma->vm_end && next && end > next->vm_start) {
-			cow_pte_rss(mm, next, pmd,
-				    next->vm_start, end, true /* inc */);
-			end = vma->vm_end;
-		}
-		cow_pte_rss(mm, vma, pmd, start, end, true /* inc */);
+		multiple_cow_pte_rss(mm, vma, pmd, start, end, true /* inc */);
 
 		mm_inc_nr_ptes(mm);
 		/* Memory barrier here is the same as pmd_install(). */
@@ -2978,28 +2986,41 @@ void cow_pte_fallback(struct vm_area_struct *vma, pmd_t *pmd,
 	set_pmd_at(mm, addr, pmd, new);
 }
 
-static inline int copy_cow_pte_range(struct vm_area_struct *vma,
+static inline int copy_cow_pte_range(struct vm_area_struct *orig_vma,
 				     pmd_t *dst_pmd, pmd_t *src_pmd,
-				     unsigned long start, unsigned long end)
+				     unsigned long pte_start,
+				     unsigned long pte_end)
 {
-	struct mm_struct *mm = vma->vm_mm;
+	struct mm_struct *mm = orig_vma->vm_mm;
 	struct mmu_notifier_range range;
+	struct vm_area_struct *vma = NULL;
 	int ret;
-	bool is_cow;
+	unsigned long start, end;
 
-	is_cow = is_cow_mapping(vma->vm_flags);
-	if (is_cow) {
-		flush_tlb_range(vma, start, end);
+	vma = orig_vma;
+	while (vma) {
+		if (vma->vm_start <= pte_start)
+			break;
+		vma = vma->vm_prev;
+	}
+
+	flush_tlb_range(vma, pte_start, pte_end);
+	for (;vma && vma->vm_start < pte_end; vma = vma->vm_next) {
+		start = (vma->vm_start < pte_start) ? pte_start : vma->vm_start;
+		end = (pte_end < vma->vm_end) ? pte_end : vma->vm_end;
+
 		mmu_notifier_range_init(&range, MMU_NOTIFY_PROTECTION_PAGE,
 					0, vma, mm, start, end);
 		mmu_notifier_invalidate_range_start(&range);
 		mmap_assert_write_locked(mm);
 		raw_write_seqcount_begin(&mm->write_protect_seq);
-	}
 
-	ret = copy_pte_range(vma, vma, dst_pmd, src_pmd, start, end);
+		ret = copy_pte_range(vma, vma, dst_pmd, src_pmd, start, end);
+		if (unlikely(ret)) {
+			ret = -ENOMEM;
+			break;
+		}
 
-	if (is_cow) {
 		raw_write_seqcount_end(&mm->write_protect_seq);
 		mmu_notifier_invalidate_range_end(&range);
 	}
@@ -3026,8 +3047,6 @@ static int break_cow_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	struct mm_struct *mm = vma->vm_mm;
 	unsigned long pte_start, pte_end;
 	unsigned long start, end;
-	struct vm_area_struct *prev = vma->vm_prev;
-	struct vm_area_struct *next = vma->vm_next;
 	pmd_t cowed_entry = *pmd;
 
 	if (cow_pte_count(&cowed_entry) == 1) {
@@ -3043,21 +3062,7 @@ static int break_cow_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	 * If the vma does not cover the entire address range of the PTE table,
 	 * it should check the previous and next.
 	 */
-	if (start < vma->vm_start && prev) {
-		/* The part of address range is covered by previous. */
-		if (start < prev->vm_end)
-			copy_cow_pte_range(prev, pmd, &cowed_entry,
-					   start, prev->vm_end);
-		start = vma->vm_start;
-	}
-	if (end > vma->vm_end && next) {
-		/* The part of address range is covered by next. */
-		if (end > next->vm_start)
-			copy_cow_pte_range(next, pmd, &cowed_entry,
-					   next->vm_start, end);
-		end = vma->vm_end;
-	}
-	if (copy_cow_pte_range(vma, pmd, &cowed_entry, start, end))
+	if (copy_cow_pte_range(vma, pmd, &cowed_entry, pte_start, pte_end))
 		return -ENOMEM;
 
 	/*
@@ -3067,15 +3072,8 @@ static int break_cow_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	 */
 	if (cow_pte_owner_is_same(&cowed_entry, pmd)) {
 		set_cow_pte_owner(&cowed_entry, NULL);
-		if (pte_start < vma->vm_start && prev &&
-		    pte_start < prev->vm_end)
-			cow_pte_rss(mm, vma->vm_prev, pmd,
-				    pte_start, prev->vm_end, false /* dec */);
-		if (pte_end > vma->vm_end && next &&
-		    pte_end > next->vm_start)
-			cow_pte_rss(mm, vma->vm_next, pmd,
-				    next->vm_start, pte_end, false /* dec */);
-		cow_pte_rss(mm, vma, pmd, start, end, false /* dec */);
+		multiple_cow_pte_rss(mm, vma, pmd,
+				     pte_start, pte_end, false /* dec */);
 		mm_dec_nr_ptes(mm);
 	}
 
@@ -3107,7 +3105,7 @@ static int zap_cow_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	 */
 	if (cow_pte_owner_is_same(pmd, pmd)) {
 		set_cow_pte_owner(pmd, NULL);
-		cow_pte_rss(mm, vma, pmd, start, end, false /* dec */);
+		multiple_cow_pte_rss(mm, vma, pmd, start, end, false /* dec */);
 		mm_dec_nr_ptes(mm);
 	}
 
