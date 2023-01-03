@@ -1016,7 +1016,8 @@ static int page_vma_mkclean_one(struct page_vma_mapped_walk *pvmw)
 static bool page_mkclean_one(struct folio *folio, struct vm_area_struct *vma,
 			     unsigned long address, void *arg)
 {
-	DEFINE_FOLIO_VMA_WALK(pvmw, folio, vma, address, PVMW_SYNC);
+	DEFINE_FOLIO_VMA_WALK(pvmw, folio, vma, address,
+			      PVMW_SYNC | PVMW_COW_PTE);
 	int *cleaned = arg;
 
 	*cleaned += page_vma_mkclean_one(&pvmw);
@@ -1834,7 +1835,7 @@ static bool try_to_migrate_one(struct folio *folio, struct vm_area_struct *vma,
 		     unsigned long address, void *arg)
 {
 	struct mm_struct *mm = vma->vm_mm;
-	DEFINE_FOLIO_VMA_WALK(pvmw, folio, vma, address, 0);
+	DEFINE_FOLIO_VMA_WALK(pvmw, folio, vma, address, PVMW_COW_PTE);
 	pte_t pteval;
 	struct page *subpage;
 	bool anon_exclusive, ret = true;
@@ -2167,7 +2168,7 @@ static bool page_make_device_exclusive_one(struct folio *folio,
 		struct vm_area_struct *vma, unsigned long address, void *priv)
 {
 	struct mm_struct *mm = vma->vm_mm;
-	DEFINE_FOLIO_VMA_WALK(pvmw, folio, vma, address, 0);
+	DEFINE_FOLIO_VMA_WALK(pvmw, folio, vma, address, PVMW_COW_PTE);
 	struct make_exclusive_args *args = priv;
 	pte_t pteval;
 	struct page *subpage;
