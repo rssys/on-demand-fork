@@ -30,7 +30,7 @@ series = {EuroSys '21}
 ```
 
 ### Build
-We provide the complete source code of the ODF implementation, which is based on Linux kernel v6.0.6. We recommend using the included configuration file `.config` that we tested our implementation with, but you can change it to suit your needs.
+We provide the complete source code of the ODF implementation, which is based on Linux kernel v6.0.6. We recommend using the `x86_64_defconfig` that we tested our implementation with, but you can change it to suit your needs.
 
 Compile the kernel as you normally would, then install the kernel image and modules. Boot your system using this version of the kernel (refer to the documentation of your bootloader).
 
@@ -56,7 +56,6 @@ Use ODF in one of the following ways:
     ```
 
 ### Warning
-
 We don't support the following features with odf.
 - Soft-dirty
 - Any feature depends on the actual refcount/mapcount of the mapped page.
