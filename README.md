@@ -58,9 +58,5 @@ Use ODF in one of the following ways:
 ### Warning
 
 We don't support the following features with odf.
-- userfaultfd
-- THP
-- soft-dirty
-- KSM
-- shmem
-- mprotect() and madvise()
+- Soft-dirty
+- Any feature depends on the actual refcount/mapcount of the mapped page.
