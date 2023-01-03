@@ -1679,7 +1679,6 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 			spin_unlock(ptl);
 		}
 
-		/* TODO: Does TLB needs to flush page info in COWed table? */
 		if (is_pte_table_cowing(vma, pmd))
 			handle_cow_pte(vma, pmd, addr, false);
 
@@ -1997,6 +1996,8 @@ static int insert_page(struct vm_area_struct *vma, unsigned long addr,
 	if (retval)
 		goto out;
 	retval = -ENOMEM;
+	if (handle_cow_pte(vma, NULL, pmd, true) < 0)
+		goto out;
 	pte = get_locked_pte(vma->vm_mm, addr, &ptl);
 	if (!pte)
 		goto out;
@@ -2256,6 +2257,8 @@ static vm_fault_t insert_pfn(struct vm_area_struct *vma, unsigned long addr,
 	pte_t *pte, entry;
 	spinlock_t *ptl;
 
+	if (handle_cow_pte(vma, NULL, addr, true) < 0)
+		return VM_FAULT_OOM;
 	pte = get_locked_pte(mm, addr, &ptl);
 	if (!pte)
 		return VM_FAULT_OOM;
@@ -2633,6 +2636,8 @@ int remap_pfn_range_notrack(struct vm_area_struct *vma, unsigned long addr,
 	BUG_ON(addr >= end);
 	pfn -= addr >> PAGE_SHIFT;
 	pgd = pgd_offset(mm, addr);
+	if (!handle_cow_pte_range(vma, addr, end))
+		return -ENOMEM;
 	flush_cache_range(vma, addr, end);
 	do {
 		next = pgd_addr_end(addr, end);
@@ -3157,6 +3162,35 @@ int handle_cow_pte(struct vm_area_struct *vma, pmd_t *pmd, unsigned long addr,
 		ret = zap_cow_pte(vma, pmd, addr);
 
 	return ret;
+}
+
+/**
+ * handle_cow_pte_range - duplicate/reuse COW-ed PTE in a given range
+ * @vma: target vma want to break COW
+ * @start: the address of start breaking
+ * @end: the address of end breaking
+ *
+ * Return: zero on success, the number of failed otherwise.
+ */
+int handle_cow_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
+			 unsigned long start, unsigned long end, bool alloc)
+{
+	unsigned long addr, next;
+	int nr_failed = 0;
+
+	if (!vma)
+		return -EINVAL;
+	if (!range_in_vma(vma, start, end))
+		return -EINVAL;
+
+	addr = start;
+	do {
+		next = pmd_addr_end(addr, end);
+		if (handle_cow_pte(vma, NULL, addr, alloc) < 0)
+			nr_failed++;
+	} while (addr = next, addr != end);
+
+	return nr_failed;
 }
 
 /*
