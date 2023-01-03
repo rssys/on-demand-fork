@@ -2993,21 +2993,24 @@ static inline int copy_cow_pte_range(struct vm_area_struct *orig_vma,
 {
 	struct mm_struct *mm = orig_vma->vm_mm;
 	struct mmu_notifier_range range;
-	struct vm_area_struct *vma = NULL;
-	int ret;
+	struct vm_area_struct *vma = orig_vma;
 	unsigned long start, end;
+	int ret = 0;
 
-	vma = orig_vma;
-	while (vma) {
-		if (vma->vm_start <= pte_start)
+	do {
+		struct vm_area_struct *prev = vma->vm_prev;
+
+		if (!prev)
 			break;
-		vma = vma->vm_prev;
-	}
+		if (prev->vm_end < pte_start)
+			break;
+		vma = prev;
+	} while (vma);
 
 	flush_tlb_range(vma, pte_start, pte_end);
 	for (;vma && vma->vm_start < pte_end; vma = vma->vm_next) {
-		start = (vma->vm_start < pte_start) ? pte_start : vma->vm_start;
-		end = (pte_end < vma->vm_end) ? pte_end : vma->vm_end;
+		start = max(vma->vm_start, pte_start);
+		end = min(vma->vm_end, pte_end);
 
 		mmu_notifier_range_init(&range, MMU_NOTIFY_PROTECTION_PAGE,
 					0, vma, mm, start, end);

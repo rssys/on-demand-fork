@@ -54,3 +54,13 @@ Use ODF in one of the following ways:
     echo 1 > /proc/self/use_odf
     /path/to/your/program args
     ```
+
+### Warning
+
+We don't support the following features with odf.
+- userfaultfd
+- THP
+- soft-dirty
+- KSM
+- shmem
+- mprotect() and madvise()
