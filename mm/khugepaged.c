@@ -32,6 +32,7 @@ enum scan_result {
 	SCAN_EXCEED_SWAP_PTE,
 	SCAN_EXCEED_SHARED_PTE,
 	SCAN_PTE_NON_PRESENT,
+	SCAN_COW_PTE,
 	SCAN_PTE_UFFD_WP,
 	SCAN_PAGE_RO,
 	SCAN_LACK_REFERENCED_PAGE,
@@ -1072,6 +1073,8 @@ static void collapse_huge_page(struct mm_struct *mm,
 	if (mm_find_pmd(mm, address) != pmd)
 		goto out_up_write;
 
+	VM_WARN_ON(test_bit(MMF_COW_PTE, &mm->flags) && !pmd_write(*pmd));
+
 	anon_vma_lock_write(vma->anon_vma);
 
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, NULL, mm,
@@ -1178,6 +1181,11 @@ static int khugepaged_scan_pmd(struct mm_struct *mm,
 	pmd = mm_find_pmd(mm, address);
 	if (!pmd) {
 		result = SCAN_PMD_NULL;
+		goto out;
+	}
+
+	if (handle_cow_pte(vma, pmd, address, true) < 0) {
+		result = SCAN_COW_PTE;
 		goto out;
 	}
 
@@ -1425,6 +1433,10 @@ void collapse_pte_mapped_thp(struct mm_struct *mm, unsigned long addr)
 	pmd = mm_find_pmd(mm, haddr);
 	if (!pmd)
 		goto drop_hpage;
+
+	if (handle_cow_pte(vma, pmd, haddr, true) < 0)
+		goto drop_hpage;
+	VM_WARN_ON(test_bit(MMF_COW_PTE, &mm->flags) && !pmd_write(*pmd));
 
 	start_pte = pte_offset_map_lock(mm, pmd, haddr, &ptl);
 
