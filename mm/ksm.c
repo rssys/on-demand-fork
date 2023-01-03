@@ -1041,7 +1041,7 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 			      pte_t *orig_pte)
 {
 	struct mm_struct *mm = vma->vm_mm;
-	DEFINE_PAGE_VMA_WALK(pvmw, page, vma, 0, 0);
+	DEFINE_PAGE_VMA_WALK(pvmw, page, vma, 0, PVMW_COW_PTE);
 	int swapped;
 	int err = -EFAULT;
 	struct mmu_notifier_range range;
@@ -1147,6 +1147,9 @@ static int replace_page(struct vm_area_struct *vma, struct page *page,
 
 	pmd = mm_find_pmd(mm, addr);
 	if (!pmd)
+		goto out;
+
+	if (handle_cow_pte(vma, pmd, addr, true) < 0)
 		goto out;
 
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, vma, mm, addr,

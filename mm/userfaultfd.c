@@ -69,6 +69,9 @@ int mfill_atomic_install_pte(struct mm_struct *dst_mm, pmd_t *dst_pmd,
 	struct inode *inode;
 	pgoff_t offset, max_off;
 
+	if (handle_cow_pte(dst_vma, dst_pmd, dst_addr) < 0)
+		return -ENOMEM;
+
 	_dst_pte = mk_pte(page, dst_vma->vm_page_prot);
 	_dst_pte = pte_mkdirty(_dst_pte);
 	if (page_in_cache && !vm_shared)
@@ -209,6 +212,9 @@ static int mfill_zeropage_pte(struct mm_struct *dst_mm,
 	int ret;
 	pgoff_t offset, max_off;
 	struct inode *inode;
+
+	if (handle_cow_pte(dst_vma, dst_pmd, dst_addr) < 0)
+		return -ENOMEM;
 
 	_dst_pte = pte_mkspecial(pfn_pte(my_zero_pfn(dst_addr),
 					 dst_vma->vm_page_prot));

@@ -155,7 +155,8 @@ static int __replace_page(struct vm_area_struct *vma, unsigned long addr,
 				struct page *old_page, struct page *new_page)
 {
 	struct mm_struct *mm = vma->vm_mm;
-	DEFINE_FOLIO_VMA_WALK(pvmw, page_folio(old_page), vma, addr, 0);
+	DEFINE_FOLIO_VMA_WALK(pvmw, page_folio(old_page), vma, addr,
+			      PVMW_COW_PTE);
 	int err;
 	struct mmu_notifier_range range;
 

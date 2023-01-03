@@ -1182,6 +1182,10 @@ out:
 	if (pmd_trans_unstable(pmd))
 		return 0;
 
+	if (cp->type == CLEAR_REFS_SOFT_DIRTY &&
+	    handle_cow_pte(vma, pmd, addr) < 0)
+		return 0;
+
 	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	for (; addr != end; pte++, addr += PAGE_SIZE) {
 		ptent = *pte;

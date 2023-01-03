@@ -94,6 +94,9 @@ static unsigned long change_pte_range(struct mmu_gather *tlb,
 	if (pmd_trans_unstable(pmd))
 		return 0;
 
+	if (handle_cow_pte(vma, pmd, addr, true) < 0)
+		return 0;
+
 	/*
 	 * The pmd points to a regular pte so the pmd can't change
 	 * from under us even if the mmap_lock is only hold for
@@ -297,6 +300,12 @@ static inline int pmd_none_or_clear_bad_unless_trans_huge(pmd_t *pmd)
 	if (pmd_none(pmdval))
 		return 1;
 	if (pmd_trans_huge(pmdval))
+		return 0;
+	/*
+	 * If the entry point to COW-ed PTE, it's write protection bit
+	 * will cause pmd_bad().
+	 */
+	if (!pmd_write(pmdval))
 		return 0;
 	if (unlikely(pmd_bad(pmdval))) {
 		pmd_clear_bad(pmd);

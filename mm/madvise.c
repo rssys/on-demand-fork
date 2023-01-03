@@ -407,6 +407,9 @@ regular_page:
 	if (pmd_trans_unstable(pmd))
 		return 0;
 #endif
+	if (handle_cow_pte(vma, pmd, addr, true) < 0)
+		return 0;
+
 	tlb_change_page_size(tlb, PAGE_SIZE);
 	orig_pte = pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	flush_tlb_batched_pending(mm);
@@ -611,6 +614,9 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 
 	if (pmd_trans_unstable(pmd))
 		return 0;
+
+	if (handle_cow_pte(vma, pmd, addr, true) < 0)
+		goto next;
 
 	tlb_change_page_size(tlb, PAGE_SIZE);
 	orig_pte = pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
@@ -961,6 +967,12 @@ static long madvise_remove(struct vm_area_struct *vma,
 
 	if ((vma->vm_flags & (VM_SHARED|VM_WRITE)) != (VM_SHARED|VM_WRITE))
 		return -EACCES;
+
+	error = break_cow_pte_range(vma, start, end);
+	if (error < 0)
+		return error;
+	else if (error > 0)
+		return -ENOMEM;
 
 	offset = (loff_t)(start - vma->vm_start)
 			+ ((loff_t)vma->vm_pgoff << PAGE_SHIFT);

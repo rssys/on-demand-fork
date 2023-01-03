@@ -469,6 +469,8 @@ static int follow_pfn_pte(struct vm_area_struct *vma, unsigned long address,
 		entry = pte_mkyoung(entry);
 
 		if (!pte_same(*pte, entry)) {
+			if (handle_cow_pte(vma, NULL, address, true) < 0)
+				return -ENOMEM;
 			set_pte_at(vma->vm_mm, address, pte, entry);
 			update_mmu_cache(vma, address, pte);
 		}
