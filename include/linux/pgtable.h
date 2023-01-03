@@ -710,7 +710,7 @@ static inline bool is_cow_pte_available(struct vm_area_struct *vma, pmd_t *pmd)
 
 int handle_cow_pte(struct vm_area_struct *vma, pmd_t *pmd, unsigned long addr,
 		    bool alloc);
-int handle_cow_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
+int handle_cow_pte_range(struct vm_area_struct *vma,
 			 unsigned long start, unsigned long end, bool alloc);
 
 #ifndef pte_access_permitted

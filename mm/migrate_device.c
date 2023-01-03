@@ -106,7 +106,7 @@ again:
 		}
 	}
 
-	if (!handle_cow_pte_range(vma, start, end))
+	if (!handle_cow_pte_range(vma, start, end, true))
 		return migrate_vma_collect_skip(start, end, walk);
 
 	if (unlikely(pmd_bad(*pmdp)))

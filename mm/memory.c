@@ -1996,7 +1996,7 @@ static int insert_page(struct vm_area_struct *vma, unsigned long addr,
 	if (retval)
 		goto out;
 	retval = -ENOMEM;
-	if (handle_cow_pte(vma, NULL, pmd, true) < 0)
+	if (handle_cow_pte(vma, NULL, addr, true) < 0)
 		goto out;
 	pte = get_locked_pte(vma->vm_mm, addr, &ptl);
 	if (!pte)
@@ -2636,7 +2636,7 @@ int remap_pfn_range_notrack(struct vm_area_struct *vma, unsigned long addr,
 	BUG_ON(addr >= end);
 	pfn -= addr >> PAGE_SHIFT;
 	pgd = pgd_offset(mm, addr);
-	if (!handle_cow_pte_range(vma, addr, end))
+	if (!handle_cow_pte_range(vma, addr, end, true))
 		return -ENOMEM;
 	flush_cache_range(vma, addr, end);
 	do {
@@ -3172,7 +3172,7 @@ int handle_cow_pte(struct vm_area_struct *vma, pmd_t *pmd, unsigned long addr,
  *
  * Return: zero on success, the number of failed otherwise.
  */
-int handle_cow_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
+int handle_cow_pte_range(struct vm_area_struct *vma,
 			 unsigned long start, unsigned long end, bool alloc)
 {
 	unsigned long addr, next;

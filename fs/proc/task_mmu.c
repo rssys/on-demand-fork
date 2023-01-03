@@ -1183,7 +1183,7 @@ out:
 		return 0;
 
 	if (cp->type == CLEAR_REFS_SOFT_DIRTY &&
-	    handle_cow_pte(vma, pmd, addr) < 0)
+	    handle_cow_pte(vma, pmd, addr, true) < 0)
 		return 0;
 
 	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);

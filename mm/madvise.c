@@ -968,7 +968,7 @@ static long madvise_remove(struct vm_area_struct *vma,
 	if ((vma->vm_flags & (VM_SHARED|VM_WRITE)) != (VM_SHARED|VM_WRITE))
 		return -EACCES;
 
-	error = break_cow_pte_range(vma, start, end);
+	error = handle_cow_pte_range(vma, start, end, true);
 	if (error < 0)
 		return error;
 	else if (error > 0)
