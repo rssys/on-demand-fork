@@ -30,7 +30,8 @@ series = {EuroSys '21}
 ```
 
 ### Version
-This branch is **the patch set version**. For the paper version please see the [link](https://github.com/rssys/on-demand-fork/tree/paper-version-kernel-v5.6.19). The following is the difference from the paper version.
+As we attempt to upstream the ODF to the Linux Kernel mainline, we adapt (add) some of the ideas including the scope of the shareable page table, lifetime management, and support some of the kernel features interact with ODF.
+This branch is **the patch set version**. For **the paper version** please see the [link](https://github.com/rssys/on-demand-fork/tree/paper-version-kernel-v5.6.19). The following is the difference from the paper version.
 
 - **Last-Level Page Table Lifecycle.**
     - If the shared PTE table's refcount is one, the process that triggers the fault will reuse the shared PTE table. Otherwise, the process will decrease the refcount, copy the information to a new PTE table or dereference all the information and change the owner if it has the shared PTE table.
@@ -38,6 +39,12 @@ This branch is **the patch set version**. For the paper version please see the [
     - To handle the page table state of each process that has a shared PTE table, the patch introduces the concept of COW PTE table ownership. This implementation uses the address of the PMD index to track the ownership of the PTE table. This helps maintain the state of the COW PTE tables, such as the RSS and pgtable_bytes.
     - Some PTE tables (e.g., pinned pages that reside in the table) still need to be copied immediately for consistency with the current COW logic. As a result, a flag, COW_PTE_OWNER_EXCLUSIVE, indicating whether a PTE table is exclusive (i.e., only one task owns it at a time), is added to the table’s owner pointer. Every time a PTE table is copied during the fork, the owner pointer (and thus the exclusive flag) will be checked to determine whether the PTE table can be shared across processes.
     - Because the fork uses the Virtual-Memory-Area (VMA) to traverse the page tables and the VMA may overlap the multiple last-level page tables (PTE tables). In such a situation, One PTE table might have multiple VMAs. And, since the fork uses the VMA to traverse the page table, the fork may do COW multiple times on the same PTE. The shareable range of PTE of the paper version is restricted by the virtual address space, which means that PTE fully covered by the single VMA can be shared. To allow more PTEs to be shared, the patch set version uses the ownership instead of address range of VMA to solve the overlapping situation.
+
+Following is the performance comparison between the paper and patch set.
+For the patch set, we ran the experiment(s) on a machine with a 20-core Intel(R) Core(TM) i9-10900F, 46.9 GB memory.
+Here is the execution throughput of AFL on SQLite,
+The paper version got a 2.26x throughput, and the patch set version got a 9.35x throughput.
+And for the TriforceAFL execution throughput, the paper version is 59.3% higher than the normal fork system call, and the patch set version is 28.9% higher.
 
 ### Build
 We provide the complete source code of the ODF implementation, which is based on Linux kernel v6.0.6. We recommend using the `x86_64_defconfig` that we tested our implementation with, but you can change it to suit your needs.
