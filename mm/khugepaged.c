@@ -967,6 +967,8 @@ static bool __collapse_huge_page_swapin(struct mm_struct *mm,
 			pte_unmap(vmf.pte);
 			continue;
 		}
+		if (test_bit(MMF_COW_PTE, &mm->flags))
+			handle_cow_pte(vma, pmd, address, true);
 		ret = do_swap_page(&vmf);
 
 		/*

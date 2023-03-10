@@ -5293,8 +5293,12 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 			return do_fault(vmf);
 	}
 
-	if (!pte_present(vmf->orig_pte))
+	if (!pte_present(vmf->orig_pte)) {
+		if (test_bit(MMF_COW_PTE, &vmf->vma->vm_mm->flags))
+			handle_cow_pte(vmf->vma, vmf->pmd,
+				       vmf->real_address, true);
 		return do_swap_page(vmf);
+	}
 
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
