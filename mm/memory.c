@@ -3012,7 +3012,6 @@ static inline int copy_cow_pte_range(struct vm_area_struct *orig_vma,
 		vma = prev;
 	} while (vma);
 
-	flush_tlb_range(vma, pte_start, pte_end);
 	for (;vma && vma->vm_start < pte_end; vma = vma->vm_next) {
 		start = max(vma->vm_start, pte_start);
 		end = min(vma->vm_end, pte_end);
@@ -3020,7 +3019,6 @@ static inline int copy_cow_pte_range(struct vm_area_struct *orig_vma,
 		mmu_notifier_range_init(&range, MMU_NOTIFY_PROTECTION_PAGE,
 					0, vma, mm, start, end);
 		mmu_notifier_invalidate_range_start(&range);
-		mmap_assert_write_locked(mm);
 		raw_write_seqcount_begin(&mm->write_protect_seq);
 
 		ret = copy_pte_range(vma, vma, dst_pmd, src_pmd, start, end);
@@ -3032,6 +3030,7 @@ static inline int copy_cow_pte_range(struct vm_area_struct *orig_vma,
 		raw_write_seqcount_end(&mm->write_protect_seq);
 		mmu_notifier_invalidate_range_end(&range);
 	}
+	flush_tlb_range(vma, pte_start, pte_end);
 
 	return ret;
 }
