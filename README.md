@@ -42,9 +42,14 @@ This branch is **the patch set version**. For **the paper version** please see t
 
 Following is the performance comparison between the paper and patch set.
 For the patch set, we ran the experiment(s) on a machine with a 20-core Intel(R) Core(TM) i9-10900F, 46.9 GB memory.
-Here is the execution throughput of AFL on SQLite,
-The paper version got a 2.26x throughput, and the patch set version got a 9.35x throughput.
-And for the TriforceAFL execution throughput, the paper version is 59.3% higher than the normal fork system call, and the patch set version is 28.9% higher.
+
+Here is the execution throughput of AFL on SQLite:
+- The paper version got a 2.26x throughput.
+- The patch set version got a 9.35x throughput.
+
+And for the TriforceAFL execution throughput:
+- The paper version got 59.3% higher than the normal fork system call.
+- The patch set version got 28.9% higher than the normal fork system call.
 
 ### Build
 We provide the complete source code of the ODF implementation, which is based on Linux kernel v6.0.6. We recommend using the `x86_64_defconfig` that we tested our implementation with, but you can change it to suit your needs.
