@@ -2668,6 +2668,11 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 			trace = 0;
 	}
 
+	if (current->mm && test_bit(MMF_COW_PTE_READY, &current->mm->flags)) {
+		clear_bit(MMF_COW_PTE_READY, &current->mm->flags);
+		set_bit(MMF_COW_PTE, &current->mm->flags);
+	}
+
 	p = copy_process(NULL, trace, NUMA_NO_NODE, args);
 	add_latent_entropy();
 
