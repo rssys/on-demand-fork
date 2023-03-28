@@ -548,19 +548,22 @@ static void multiple_cow_pte_rss(struct mm_struct *mm,
 				 pmd_t *pmdp, unsigned long pte_start,
 				 unsigned long pte_end, bool inc_dec)
 {
-	struct vm_area_struct *vma = NULL;
+	struct vm_area_struct *vma = orig_vma;
 	unsigned long start, end;
 
-	vma = orig_vma;
-	while (vma) {
-		if (vma->vm_start <= pte_start)
+	do {
+		struct vm_area_struct *prev = vma->vm_prev;
+
+		if (!prev)
 			break;
-		vma = vma->vm_prev;
-	}
+		if (prev->vm_end < pte_start)
+			break;
+		vma = prev;
+	} while (vma);
 
 	for (;vma && vma->vm_start < pte_end; vma = vma->vm_next) {
-		start = (vma->vm_start < pte_start) ? pte_start : vma->vm_start;
-		end = (pte_end < vma->vm_end) ? pte_end : vma->vm_end;
+		start = max(vma->vm_start, pte_start);
+		end = min(vma->vm_end, pte_end);
 		cow_pte_rss(mm, vma, pmdp, start, end, inc_dec);
 	}
 }
@@ -1256,12 +1259,11 @@ copy_pmd_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 				 * the RSS state and pgtable bytes.
 				 */
 				if (!pmd_write(*src_pmd)) {
-					cow_pte_rss(src_mm, src_vma, src_pmd,
-						    get_pmd_start_edge(src_vma,
-									addr),
-						    get_pmd_end_edge(src_vma,
-									addr),
-						    true /* inc */);
+					multiple_cow_pte_rss(src_mm, src_vma,
+							src_pmd,
+							addr & PMD_MASK,
+							(addr + PMD_SIZE) & PMD_MASK,
+							true /* inc */);
 					/* Do we need pt lock here? */
 					mm_inc_nr_ptes(src_mm);
 					/* See the comments in pmd_install(). */
@@ -3030,7 +3032,7 @@ static inline int copy_cow_pte_range(struct vm_area_struct *orig_vma,
 		raw_write_seqcount_end(&mm->write_protect_seq);
 		mmu_notifier_invalidate_range_end(&range);
 	}
-	flush_tlb_range(vma, pte_start, pte_end);
+	flush_tlb_range(orig_vma, pte_start, pte_end);
 
 	return ret;
 }
